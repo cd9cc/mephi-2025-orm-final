@@ -1,0 +1,1 @@
+rootProject.name = "mephi-2025-orm-final"
