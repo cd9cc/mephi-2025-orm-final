@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.*;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -52,6 +53,11 @@ public class ApiExceptionHandler {
         return problem(
                 HttpStatus.CONFLICT,
                 "Data conflicts with an existing record or a referenced record; remove dependencies first");
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ProblemDetail> authentication(AuthenticationException e) {
+        return problem(HttpStatus.UNAUTHORIZED, "Authentication failed");
     }
 
     private ResponseEntity<ProblemDetail> problem(HttpStatus status, String detail) {

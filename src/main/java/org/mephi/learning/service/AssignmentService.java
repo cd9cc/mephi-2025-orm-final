@@ -9,6 +9,9 @@ import org.mephi.learning.api.Views.*;
 import org.mephi.learning.entity.*;
 import org.mephi.learning.repository.*;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
@@ -52,6 +55,7 @@ public class AssignmentService {
     public SubmissionView grade(Long id, @Valid GradeInput input) {
         Submission s = access.require(submissions, id, "Submission");
         User teacher = access.teacher(input.teacherId());
+        requireCurrentTeacher(teacher);
         if (!teacher.getId()
                 .equals(s.getAssignment().getLesson().getModule().getCourse().getTeacher().getId()))
             throw new DomainException(
@@ -62,6 +66,16 @@ public class AssignmentService {
         s.setFeedback(input.feedback());
         notifications.submissionGraded(s);
         return Views.submission(s);
+    }
+
+    private void requireCurrentTeacher(User teacher) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null
+                || !authentication.isAuthenticated()
+                || authentication instanceof AnonymousAuthenticationToken) return;
+        if (!teacher.getEmail().equalsIgnoreCase(authentication.getName()))
+            throw new DomainException(
+                    HttpStatus.FORBIDDEN, "Only the authenticated course teacher can grade");
     }
 
     public List<SubmissionView> forAssignment(Long id) {

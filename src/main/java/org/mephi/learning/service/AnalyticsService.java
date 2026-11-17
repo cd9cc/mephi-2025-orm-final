@@ -1,6 +1,5 @@
 package org.mephi.learning.service;
 
-import jakarta.persistence.EntityNotFoundException;
 import java.util.*;
 import java.util.stream.Collectors;
 import org.mephi.learning.api.AnalyticsViews.*;
@@ -11,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AnalyticsService {
+
     private final UserRepository users;
     private final EnrollmentRepository enrollments;
     private final SubmissionRepository submissions;
@@ -29,7 +29,9 @@ public class AnalyticsService {
 
     @Transactional(readOnly = true)
     public StudentPerformance student(Long studentId) {
-        User student = users.findById(studentId).orElseThrow(EntityNotFoundException::new);
+        User student =
+                users.findById(studentId)
+                        .orElseThrow(() -> DomainException.missing("Student", studentId));
         List<CoursePerformance> courses =
                 enrollments.findByStudentId(studentId).stream()
                         .map(e -> coursePerformance(e.getCourse(), studentId))
@@ -129,14 +131,19 @@ public class AnalyticsService {
 
     private StudentRanking studentScores(User u) {
         StudentPerformance p = student(u.getId());
-        int graded =
-                (int)
-                                submissions.findByStudentId(u.getId()).stream()
-                                        .filter(s -> s.getScore() != null)
-                                        .count()
-                        + quizSubmissions.findByStudentId(u.getId()).size();
+        List<Double> scores = new ArrayList<>();
+        submissions.findByStudentId(u.getId()).stream()
+                .filter(s -> s.getScore() != null)
+                .forEach(s -> scores.add(s.getScore() * 100.0 / s.getAssignment().getMaxScore()));
+        quizSubmissions.findByStudentId(u.getId()).stream()
+                .forEach(q -> scores.add(quizPercent(q)));
         return new StudentRanking(
-                u.getId(), u.getName(), p.courses().size(), graded, p.overallPercent(), 0);
+                u.getId(),
+                u.getName(),
+                p.courses().size(),
+                scores.size(),
+                weightedAverage(scores),
+                0);
     }
 
     private int assignmentCount(Course c) {

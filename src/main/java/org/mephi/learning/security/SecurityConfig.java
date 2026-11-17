@@ -1,5 +1,7 @@
 package org.mephi.learning.security;
 
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import org.mephi.learning.entity.User;
 import org.mephi.learning.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -7,6 +9,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -16,9 +20,9 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
+import tools.jackson.databind.ObjectMapper;
 
 @Configuration
 @EnableMethodSecurity
@@ -59,7 +63,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper)
+            throws Exception {
         http.csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(
                         auth -> {
@@ -108,13 +113,39 @@ public class SecurityConfig {
                         })
                 .exceptionHandling(
                         exceptions ->
-                                exceptions.authenticationEntryPoint(
-                                        new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+                                exceptions
+                                        .authenticationEntryPoint(
+                                                (request, response, exception) ->
+                                                        writeProblem(
+                                                                response,
+                                                                objectMapper,
+                                                                HttpStatus.UNAUTHORIZED,
+                                                                "Authentication is required"))
+                                        .accessDeniedHandler(
+                                                (request, response, exception) ->
+                                                        writeProblem(
+                                                                response,
+                                                                objectMapper,
+                                                                HttpStatus.FORBIDDEN,
+                                                                "Access is denied")))
                 .logout(
                         logout ->
                                 logout.logoutUrl("/api/auth/logout")
                                         .invalidateHttpSession(true)
                                         .deleteCookies("JSESSIONID"));
         return http.build();
+    }
+
+    private void writeProblem(
+            HttpServletResponse response,
+            ObjectMapper objectMapper,
+            HttpStatus status,
+            String detail)
+            throws IOException {
+        response.setStatus(status.value());
+        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
+        problem.setTitle(status.getReasonPhrase());
+        objectMapper.writeValue(response.getWriter(), problem);
     }
 }
